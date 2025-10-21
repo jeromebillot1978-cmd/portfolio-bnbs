@@ -1,0 +1,154 @@
+        <div id="status" class="status disconnected">
+            <h2>🔌 Wallet non connecté</h2>
+            <p>Cliquez sur le bouton pour connecter MetaMask</p>
+        </div>
+        
+        <div style="text-align: center; margin: 30px 0;">
+            <button id="connectBtn">🦊 Connecter MetaMask</button>
+            <button id="disconnectBtn" class="btn-disconnect" style="display: none;">❌ Déconnecter</button>
+        </div>
+        
+        <div id="walletInfo" class="wallet-info" style="display: none;">
+            <div class="info-row">
+                <span class="label">🔑 Adresse:</span>
+                <span class="value" id="walletAddress">-</span>
+            </div>
+            <div class="info-row">
+                <span class="label">🌐 Réseau:</span>
+                <span class="value" id="network">-</span>
+            </div>
+            <div class="info-row">
+                <span class="label">💰 Solde:</span>
+                <span class="value" id="balance">-</span>
+            </div>
+        </div>
+        
+        <div id="message"></div>
+    </div>
+</div>
+
+<script>
+    let currentAccount = null;
+    
+    // Attacher les événements après chargement du DOM
+    document.getElementById('connectBtn').addEventListener('click', connectMetaMask);
+    document.getElementById('disconnectBtn').addEventListener('click', disconnect);
+    
+    window.addEventListener('load', function() {
+        console.log('Page chargée');
+        if (typeof window.ethereum !== 'undefined') {
+            console.log('✅ MetaMask détecté');
+            window.ethereum.on('accountsChanged', handleAccountsChanged);
+            window.ethereum.on('chainChanged', function() { window.location.reload(); });
+        } else {
+            console.log('❌ MetaMask non détecté');
+            showMessage('⚠️ MetaMask non installé! Installez-le depuis https://metamask.io', 'error');
+        }
+    });
+
+    async function connectMetaMask() {
+        console.log('Fonction connectMetaMask appelée');
+        
+        if (typeof window.ethereum === 'undefined') {
+            alert('MetaMask non installé!\n\nInstallez MetaMask depuis:\nhttps://metamask.io/download/');
+            window.open('https://metamask.io/download/', '_blank');
+            return;
+        }
+
+        try {
+            showMessage('🔄 Connexion en cours...', 'warning');
+            console.log('Appel eth_requestAccounts...');
+            
+            const accounts = await window.ethereum.request({ 
+                method: 'eth_requestAccounts' 
+            });
+            
+            console.log('Comptes reçus:', accounts);
+            
+            if (!accounts || accounts.length === 0) {
+                showMessage('❌ Aucun compte', 'error');
+                return;
+            }
+
+            currentAccount = accounts[0];
+            
+            const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+            const balanceWei = await window.ethereum.request({
+                method: 'eth_getBalance',
+                params: [currentAccount, 'latest']
+            });
+            
+            const balance = parseInt(balanceWei, 16) / 1e18;
+            
+            updateUI(currentAccount, chainId, balance);
+            showMessage('✅ Connexion réussie!', 'success');
+
+        } catch (error) {
+            console.error('Erreur:', error);
+            
+            if (error.code === 4001) {
+                showMessage('❌ Connexion refusée', 'error');
+            } else if (error.code === -32002) {
+                showMessage('⚠️ Demande en attente - Ouvrez MetaMask 🦊', 'warning');
+            } else {
+                showMessage('❌ Erreur: ' + error.message, 'error');
+            }
+        }
+    }
+
+    function updateUI(account, chainId, balance) {
+        document.getElementById('status').className = 'status connected';
+        document.getElementById('status').innerHTML = '<h2>✅ Wallet connecté!</h2>';
+        
+        document.getElementById('connectBtn').style.display = 'none';
+        document.getElementById('disconnectBtn').style.display = 'inline-block';
+        document.getElementById('walletInfo').style.display = 'block';
+        
+        document.getElementById('walletAddress').textContent = 
+            account.substring(0, 6) + '...' + account.substring(38);
+        
+        const networks = {
+            '0x1': 'Ethereum Mainnet',
+            '0x38': 'BSC Mainnet ✅',
+            '0x89': 'Polygon',
+            '0x61': 'BSC Testnet'
+        };
+        
+        const networkName = networks[chainId] || 'Chain ' + parseInt(chainId, 16);
+        document.getElementById('network').textContent = networkName;
+        
+        const currency = chainId === '0x38' ? 'BNB' : 'ETH';
+        document.getElementById('balance').textContent = balance.toFixed(6) + ' ' + currency;
+        
+        if (chainId !== '0x38') {
+            showMessage('⚠️ Changez pour BSC Mainnet pour utiliser BNB', 'warning');
+        }
+    }
+
+    function disconnect() {
+        currentAccount = null;
+        
+        document.getElementById('status').className = 'status disconnected';
+        document.getElementById('status').innerHTML = '<h2>🔌 Non connecté</h2><p>Cliquez pour connecter</p>';
+        
+        document.getElementById('connectBtn').style.display = 'inline-block';
+        document.getElementById('disconnectBtn').style.display = 'none';
+        document.getElementById('walletInfo').style.display = 'none';
+        document.getElementById('message').innerHTML = '';
+    }
+
+    function handleAccountsChanged(accounts) {
+        if (accounts.length === 0) {
+            disconnect();
+        } else {
+            connectMetaMask();
+        }
+    }
+
+    function showMessage(text, type) {
+        const msg = document.getElementById('message');
+        msg.className = 'message ' + type;
+        msg.textContent = text;
+        setTimeout(function() { msg.innerHTML = ''; }, 6000);
+    }
+</script>
